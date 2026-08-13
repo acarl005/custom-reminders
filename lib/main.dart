@@ -165,6 +165,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await _channel.invokeMethod('setSkipIfActiveEnabled', {'value': value});
   }
 
+  bool get _canUseSkipIfActive => _healthConnectAvailable && _stepsPermissionGranted;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -249,12 +251,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 ),
                 SwitchListTile(
                   title: const Text('Skip if already active'),
-                  subtitle: const Text(
-                    "Don't remind me if I've already taken 200+ steps "
-                    'since the last reminder',
+                  subtitle: Text(
+                    _canUseSkipIfActive
+                        ? "Don't remind me if I've already taken 200+ steps "
+                            'since the last reminder'
+                        : 'Grant step access above to use this',
                   ),
                   value: _skipIfActiveEnabled,
-                  onChanged: _setSkipIfActiveEnabled,
+                  onChanged: _canUseSkipIfActive ? _setSkipIfActiveEnabled : null,
                 ),
               ],
             ),
