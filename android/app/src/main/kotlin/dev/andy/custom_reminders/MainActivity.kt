@@ -5,12 +5,14 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.activity.result.ActivityResultLauncher
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.health.connect.client.PermissionController
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -18,17 +20,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 
-class MainActivity : FlutterActivity() {
+// Health Connect's permission request relies on the AndroidX Activity Result API
+// (registerForActivityResult), which requires a ComponentActivity. Flutter's default
+// FlutterActivity extends the plain framework Activity and doesn't support this, so
+// FlutterFragmentActivity (which extends ComponentActivity via FragmentActivity) is used instead.
+class MainActivity : FlutterFragmentActivity() {
     private val channelName = "dev.andy.custom_reminders/native"
-    private val healthPermissionContract = PermissionController.createRequestPermissionResultContract()
+    private lateinit var healthPermissionLauncher: ActivityResultLauncher<Set<String>>
 
-    // FlutterActivity extends the plain framework Activity (not ComponentActivity), so the
-    // modern registerForActivityResult() API isn't available; use the classic
-    // startActivityForResult()/onActivityResult() pair instead, driving it via the same
-    // ActivityResultContract that Health Connect provides.
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        // No result parsing needed: the Dart side re-checks permission status on resume.
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Must be registered before the activity reaches STARTED, so this has to
+        // happen in onCreate rather than lazily inside the MethodChannel handler.
+        healthPermissionLauncher = registerForActivityResult(
+            PermissionController.createRequestPermissionResultContract(),
+        ) {
+            // No-op: the Dart side re-checks permission status when the app resumes.
+        }
     }
 
     @OptIn(DelicateCoroutinesApi::class)
@@ -107,19 +115,11 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "requestStepsPermission" -> {
-                    val intent = healthPermissionContract.createIntent(
-                        this,
-                        HealthConnectHelper.requiredPermissions(),
-                    )
-                    startActivityForResult(intent, HEALTH_PERMISSION_REQUEST_CODE)
+                    healthPermissionLauncher.launch(HealthConnectHelper.requiredPermissions())
                     result.success(null)
                 }
                 else -> result.notImplemented()
             }
         }
-    }
-
-    companion object {
-        private const val HEALTH_PERMISSION_REQUEST_CODE = 9001
     }
 }
