@@ -32,6 +32,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _soundEnabled = true;
   bool _canScheduleExactAlarms = true;
   bool _notificationsEnabled = true;
+  bool _ignoringBatteryOptimizations = true;
   bool _loaded = false;
 
   @override
@@ -72,10 +73,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         await _channel.invokeMethod<bool>('canScheduleExactAlarms') ?? true;
     final notificationsEnabled =
         await _channel.invokeMethod<bool>('areNotificationsEnabled') ?? true;
+    final ignoringBatteryOptimizations =
+        await _channel.invokeMethod<bool>('isIgnoringBatteryOptimizations') ??
+            true;
     if (!mounted) return;
     setState(() {
       _canScheduleExactAlarms = canSchedule;
       _notificationsEnabled = notificationsEnabled;
+      _ignoringBatteryOptimizations = ignoringBatteryOptimizations;
     });
   }
 
@@ -117,6 +122,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     'Notifications are disabled, so reminders will not appear.',
                     'Enable',
                     () => _channel.invokeMethod('requestNotificationPermission'),
+                  ),
+                if (!_ignoringBatteryOptimizations)
+                  _permissionBanner(
+                    'Battery optimization may delay or block reminders while '
+                    "the app isn't open.",
+                    'Fix',
+                    () => _channel.invokeMethod('requestIgnoreBatteryOptimizations'),
                   ),
                 SwitchListTile(
                   title: const Text('Reminders active'),
