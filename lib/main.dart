@@ -35,6 +35,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _canScheduleExactAlarms = true;
   bool _notificationsEnabled = true;
   bool _ignoringBatteryOptimizations = true;
+  bool _skipIfActiveEnabled = true;
+  bool _healthConnectAvailable = true;
+  bool _stepsPermissionGranted = true;
+  bool _lastSkippedForActivity = false;
   bool _loaded = false;
   DateTime? _snoozedUntil;
   Timer? _ticker;
@@ -61,11 +65,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Future<void> _tick() async {
     final snoozedUntilMillis =
         await _channel.invokeMethod<int>('getSnoozedUntil') ?? 0;
+    final lastSkipped =
+        await _channel.invokeMethod<bool>('wasLastReminderSkippedForActivity') ??
+            false;
     if (!mounted) return;
     setState(() {
       _snoozedUntil = snoozedUntilMillis > 0
           ? DateTime.fromMillisecondsSinceEpoch(snoozedUntilMillis)
           : null;
+      _lastSkippedForActivity = lastSkipped;
     });
   }
 
@@ -109,9 +117,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final paused = await _channel.invokeMethod<bool>('getPaused') ?? false;
     final soundEnabled =
         await _channel.invokeMethod<bool>('getSoundEnabled') ?? true;
+    final skipIfActiveEnabled =
+        await _channel.invokeMethod<bool>('getSkipIfActiveEnabled') ?? true;
     setState(() {
       _active = !paused;
       _soundEnabled = soundEnabled;
+      _skipIfActiveEnabled = skipIfActiveEnabled;
       _loaded = true;
     });
     await _refreshPermissionStatus();
@@ -125,11 +136,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final ignoringBatteryOptimizations =
         await _channel.invokeMethod<bool>('isIgnoringBatteryOptimizations') ??
             true;
+    final healthConnectAvailable =
+        await _channel.invokeMethod<bool>('isHealthConnectAvailable') ?? false;
+    final stepsPermissionGranted =
+        await _channel.invokeMethod<bool>('hasStepsPermission') ?? false;
     if (!mounted) return;
     setState(() {
       _canScheduleExactAlarms = canSchedule;
       _notificationsEnabled = notificationsEnabled;
       _ignoringBatteryOptimizations = ignoringBatteryOptimizations;
+      _healthConnectAvailable = healthConnectAvailable;
+      _stepsPermissionGranted = stepsPermissionGranted;
     });
   }
 
@@ -141,6 +158,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Future<void> _setSoundEnabled(bool value) async {
     setState(() => _soundEnabled = value);
     await _channel.invokeMethod('setSoundEnabled', {'value': value});
+  }
+
+  Future<void> _setSkipIfActiveEnabled(bool value) async {
+    setState(() => _skipIfActiveEnabled = value);
+    await _channel.invokeMethod('setSkipIfActiveEnabled', {'value': value});
   }
 
   @override
@@ -179,7 +201,38 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     'Fix',
                     () => _channel.invokeMethod('requestIgnoreBatteryOptimizations'),
                   ),
+                if (_skipIfActiveEnabled && !_healthConnectAvailable)
+                  const Card(
+                    margin: EdgeInsets.all(12),
+                    color: Color(0xFFEEEEEE),
+                    child: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text(
+                        "Health Connect isn't available on this device, so "
+                        '"Skip if already active" has no effect.',
+                      ),
+                    ),
+                  ),
+                if (_skipIfActiveEnabled &&
+                    _healthConnectAvailable &&
+                    !_stepsPermissionGranted)
+                  _permissionBanner(
+                    'Grant step-count access so reminders can be skipped '
+                    "when you're already active.",
+                    'Grant',
+                    () => _channel.invokeMethod('requestStepsPermission'),
+                  ),
                 _statusCard(),
+                if (_lastSkippedForActivity)
+                  Card(
+                    margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                    color: Colors.green.shade50,
+                    child: const ListTile(
+                      leading: Icon(Icons.directions_walk),
+                      title: Text('Last reminder skipped'),
+                      subtitle: Text('You were already active.'),
+                    ),
+                  ),
                 SwitchListTile(
                   title: const Text('Reminders active'),
                   subtitle: Text(_active ? 'Reminders are on' : 'Paused'),
@@ -193,6 +246,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   ),
                   value: _soundEnabled,
                   onChanged: _setSoundEnabled,
+                ),
+                SwitchListTile(
+                  title: const Text('Skip if already active'),
+                  subtitle: const Text(
+                    "Don't remind me if I've already taken 200+ steps "
+                    'since the last reminder',
+                  ),
+                  value: _skipIfActiveEnabled,
+                  onChanged: _setSkipIfActiveEnabled,
                 ),
               ],
             ),

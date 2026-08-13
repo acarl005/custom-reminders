@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <uses-permission android:name="android.permission.health.READ_STEPS"/>
     <application
         android:label="Custom Reminders"
         android:name="${applicationName}"
@@ -63,5 +64,7 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Needed so we can check whether Health Connect is installed/available. -->
+        <package android:name="com.google.android.apps.healthdata"/>
     </queries>
 </manifest>

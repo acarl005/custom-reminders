@@ -14,6 +14,9 @@ object Prefs {
     private const val KEY_PAUSED = "paused"
     private const val KEY_SOUND_ENABLED = "sound_enabled"
     private const val KEY_SNOOZED_UNTIL = "snoozed_until"
+    private const val KEY_SKIP_IF_ACTIVE = "skip_if_active"
+    private const val KEY_LAST_ACTIVITY_CHECK_MILLIS = "last_activity_check_millis"
+    private const val KEY_LAST_SKIPPED_FOR_ACTIVITY = "last_skipped_for_activity"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -42,5 +45,28 @@ object Prefs {
 
     fun clearSnoozedUntil(context: Context) {
         prefs(context).edit().remove(KEY_SNOOZED_UNTIL).apply()
+    }
+
+    fun getSkipIfActiveEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_SKIP_IF_ACTIVE, true)
+
+    fun setSkipIfActiveEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_SKIP_IF_ACTIVE, value).apply()
+    }
+
+    /** Epoch millis marking the start of the window to check steps over next time. */
+    fun getLastActivityCheckMillis(context: Context): Long =
+        prefs(context).getLong(KEY_LAST_ACTIVITY_CHECK_MILLIS, 0L)
+
+    fun setLastActivityCheckMillis(context: Context, millis: Long) {
+        prefs(context).edit().putLong(KEY_LAST_ACTIVITY_CHECK_MILLIS, millis).apply()
+    }
+
+    /** Whether the most recent hourly reminder was skipped because the user was already active. */
+    fun getLastSkippedForActivity(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_LAST_SKIPPED_FOR_ACTIVITY, false)
+
+    fun setLastSkippedForActivity(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_LAST_SKIPPED_FOR_ACTIVITY, value).apply()
     }
 }
