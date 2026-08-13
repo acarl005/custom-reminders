@@ -14,6 +14,7 @@ class SnoozeReceiver : BroadcastReceiver() {
         val hour = intent.getIntExtra(AlarmScheduler.EXTRA_HOUR, -1)
         if (hour == -1) return
         NotificationHelper.cancel(context, hour)
-        AlarmScheduler.scheduleSnooze(context, hour)
+        val triggerAt = AlarmScheduler.scheduleSnooze(context, hour)
+        Prefs.setSnoozedUntil(context, triggerAt)
     }
 }

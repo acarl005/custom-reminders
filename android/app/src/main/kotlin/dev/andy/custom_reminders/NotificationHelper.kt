@@ -103,8 +103,8 @@ object NotificationHelper {
 
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Reminder")
-            .setContentText("It's ${formatHour(hour)} — time for your reminder")
+            .setContentTitle("Squat time!")
+            .setContentText("Do 10 squats")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
@@ -118,15 +118,5 @@ object NotificationHelper {
 
     fun cancel(context: Context, hour: Int) {
         NotificationManagerCompat.from(context).cancel(hour)
-    }
-
-    private fun formatHour(hour: Int): String {
-        val h12 = when {
-            hour == 0 -> 12
-            hour > 12 -> hour - 12
-            else -> hour
-        }
-        val amPm = if (hour < 12) "AM" else "PM"
-        return "$h12:55 $amPm"
     }
 }

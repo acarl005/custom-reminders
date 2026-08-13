@@ -64,6 +64,7 @@ class MainActivity : FlutterActivity() {
                         notificationManager.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL,
                     )
                 }
+                "getSnoozedUntil" -> result.success(Prefs.getSnoozedUntil(this))
                 "isIgnoringBatteryOptimizations" -> {
                     val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
                     result.success(powerManager.isIgnoringBatteryOptimizations(packageName))

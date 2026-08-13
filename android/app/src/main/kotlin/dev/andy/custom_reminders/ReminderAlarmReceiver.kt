@@ -22,6 +22,10 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         // toggling "paused" off later doesn't require re-scheduling anything.
         if (!isSnooze) {
             AlarmScheduler.scheduleSlot(context, hour)
+        } else {
+            // The snooze period has elapsed, whether or not we end up showing
+            // a notification below.
+            Prefs.clearSnoozedUntil(context)
         }
 
         if (Prefs.getPaused(context)) return

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -34,18 +36,65 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _notificationsEnabled = true;
   bool _ignoringBatteryOptimizations = true;
   bool _loaded = false;
+  DateTime? _snoozedUntil;
+  Timer? _ticker;
+
+  static const List<int> _reminderHours = [
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+  ];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _init();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _ticker?.cancel();
     super.dispose();
+  }
+
+  Future<void> _tick() async {
+    final snoozedUntilMillis =
+        await _channel.invokeMethod<int>('getSnoozedUntil') ?? 0;
+    if (!mounted) return;
+    setState(() {
+      _snoozedUntil = snoozedUntilMillis > 0
+          ? DateTime.fromMillisecondsSinceEpoch(snoozedUntilMillis)
+          : null;
+    });
+  }
+
+  DateTime? _nextReminderTime() {
+    if (!_active) return null;
+    final now = DateTime.now();
+    for (final hour in _reminderHours) {
+      final candidate = DateTime(now.year, now.month, now.day, hour, 55);
+      if (candidate.isAfter(now)) return candidate;
+    }
+    final tomorrow = now.add(const Duration(days: 1));
+    return DateTime(tomorrow.year, tomorrow.month, tomorrow.day, _reminderHours.first, 55);
+  }
+
+  static String _formatClock(DateTime dt) {
+    final h12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final amPm = dt.hour < 12 ? 'AM' : 'PM';
+    return '$h12:$minute $amPm';
+  }
+
+  static String _formatCountdown(Duration d) {
+    if (d.isNegative) return 'any moment now';
+    final hours = d.inHours;
+    final minutes = d.inMinutes % 60;
+    final seconds = d.inSeconds % 60;
+    if (hours > 0) return '${hours}h ${minutes}m';
+    if (minutes > 0) return '${minutes}m ${seconds}s';
+    return '${seconds}s';
   }
 
   @override
@@ -130,6 +179,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     'Fix',
                     () => _channel.invokeMethod('requestIgnoreBatteryOptimizations'),
                   ),
+                _statusCard(),
                 SwitchListTile(
                   title: const Text('Reminders active'),
                   subtitle: Text(_active ? 'Reminders are on' : 'Paused'),
@@ -146,6 +196,46 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _statusCard() {
+    final now = DateTime.now();
+    String title;
+    String subtitle;
+    IconData icon;
+    Color color;
+
+    if (_snoozedUntil != null && _snoozedUntil!.isAfter(now)) {
+      title = 'Snoozed';
+      subtitle =
+          'Going off again at ${_formatClock(_snoozedUntil!)} '
+          '(in ${_formatCountdown(_snoozedUntil!.difference(now))})';
+      icon = Icons.snooze;
+      color = Colors.blue.shade50;
+    } else if (!_active) {
+      title = 'Reminders paused';
+      subtitle = "You won't get any reminders until you turn this back on.";
+      icon = Icons.pause_circle_outline;
+      color = Colors.grey.shade200;
+    } else {
+      final next = _nextReminderTime();
+      title = 'Next reminder';
+      subtitle = next == null
+          ? 'Unknown'
+          : '${_formatClock(next)} (in ${_formatCountdown(next.difference(now))})';
+      icon = Icons.timer_outlined;
+      color = Colors.deepPurple.shade50;
+    }
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      color: color,
+      child: ListTile(
+        leading: Icon(icon),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(subtitle),
+      ),
     );
   }
 

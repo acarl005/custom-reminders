@@ -37,8 +37,8 @@ object AlarmScheduler {
         scheduleExact(context, trigger, hour, isSnooze = false, requestCode = hour)
     }
 
-    /** Schedules a one-off reminder 5 minutes from now for the given hour slot (snooze). */
-    fun scheduleSnooze(context: Context, hour: Int) {
+    /** Schedules a one-off reminder 5 minutes from now for the given hour slot (snooze). Returns the trigger time in epoch millis. */
+    fun scheduleSnooze(context: Context, hour: Int): Long {
         val trigger = System.currentTimeMillis() + 5 * 60 * 1000L
         scheduleExact(
             context,
@@ -47,6 +47,7 @@ object AlarmScheduler {
             isSnooze = true,
             requestCode = SNOOZE_REQUEST_CODE_OFFSET + hour,
         )
+        return trigger
     }
 
     private fun nextOccurrenceMillis(hour: Int): Long {
