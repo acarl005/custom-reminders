@@ -19,6 +19,12 @@ object HealthConnectHelper {
     private const val PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
     private val STEPS_READ_PERMISSION = HealthPermission.getReadPermission(StepsRecord::class)
 
+    // Required in addition to STEPS_READ_PERMISSION because our reads happen
+    // from a BroadcastReceiver triggered by AlarmManager, i.e. while the app
+    // has no foreground activity. Without this, background reads fail with a
+    // security error, which previously looked identical to "zero steps".
+    private val BACKGROUND_READ_PERMISSION = HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
+
     fun isAvailable(context: Context): Boolean {
         return try {
             HealthConnectClient.getSdkStatus(context, PROVIDER_PACKAGE) ==
@@ -31,13 +37,14 @@ object HealthConnectHelper {
     suspend fun hasStepsPermission(context: Context): Boolean {
         return try {
             val client = HealthConnectClient.getOrCreate(context)
-            client.permissionController.getGrantedPermissions().contains(STEPS_READ_PERMISSION)
+            val granted = client.permissionController.getGrantedPermissions()
+            granted.contains(STEPS_READ_PERMISSION) && granted.contains(BACKGROUND_READ_PERMISSION)
         } catch (e: Exception) {
             false
         }
     }
 
-    fun requiredPermissions(): Set<String> = setOf(STEPS_READ_PERMISSION)
+    fun requiredPermissions(): Set<String> = setOf(STEPS_READ_PERMISSION, BACKGROUND_READ_PERMISSION)
 
     /** Total steps recorded between [sinceMillis] and now. Returns 0 on any failure. */
     suspend fun getStepsSince(context: Context, sinceMillis: Long): Long {
