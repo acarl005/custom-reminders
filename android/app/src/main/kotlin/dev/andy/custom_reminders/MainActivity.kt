@@ -124,6 +124,8 @@ class MainActivity : FlutterFragmentActivity() {
                         result.success(HealthConnectHelper.getStepsSince(this@MainActivity, since))
                     }
                 }
+                "getActivityStepThreshold" ->
+                    result.success(ReminderAlarmReceiver.ACTIVITY_STEP_THRESHOLD)
                 else -> result.notImplemented()
             }
         }

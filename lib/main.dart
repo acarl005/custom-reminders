@@ -42,6 +42,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _loaded = false;
   DateTime? _snoozedUntil;
   int? _currentIntervalSteps;
+  int _activityStepThreshold = 200;
   Timer? _ticker;
   Timer? _stepsTicker;
 
@@ -137,10 +138,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         await _channel.invokeMethod<bool>('getSoundEnabled') ?? true;
     final skipIfActiveEnabled =
         await _channel.invokeMethod<bool>('getSkipIfActiveEnabled') ?? true;
+    final activityStepThreshold =
+        await _channel.invokeMethod<int>('getActivityStepThreshold') ?? 200;
     setState(() {
       _active = !paused;
       _soundEnabled = soundEnabled;
       _skipIfActiveEnabled = skipIfActiveEnabled;
+      _activityStepThreshold = activityStepThreshold;
       _loaded = true;
     });
     await _refreshPermissionStatus();
@@ -179,7 +183,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _setSkipIfActiveEnabled(bool value) async {
-    setState(() => _skipIfActiveEnabled = value);
+    setState(() {
+      _skipIfActiveEnabled = value;
+      if (!value) _currentIntervalSteps = null;
+    });
     await _channel.invokeMethod('setSkipIfActiveEnabled', {'value': value});
   }
 
@@ -313,7 +320,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
 
     final steps = _currentIntervalSteps;
-    final showSteps = steps != null && _snoozedUntil == null && _active;
+    final showSteps =
+        steps != null && _skipIfActiveEnabled && _snoozedUntil == null && _active;
 
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
@@ -326,7 +334,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(subtitle),
-            if (showSteps) Text('$steps steps this interval'),
+            if (showSteps)
+              Text('$steps/$_activityStepThreshold steps in this interval'),
           ],
         ),
       ),
