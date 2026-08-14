@@ -24,15 +24,31 @@ import androidx.core.app.NotificationManagerCompat
  */
 object NotificationHelper {
     private const val CHANNEL_SOUND_ID = "reminders_sound"
-    // Bumped to _v2 because a channel's vibration pattern can't be changed
-    // once created; this forces a fresh channel with the new pattern.
-    private const val CHANNEL_SILENT_ID = "reminders_silent_v2"
+    // Bumped each time the vibration pattern changes, because a channel's
+    // vibration pattern is locked in at creation and can't be updated later;
+    // this forces a fresh channel with the new pattern.
+    private const val CHANNEL_SILENT_ID = "reminders_silent_v3"
 
-    // Pulses several times (~3.5s total) instead of a single default buzz,
-    // so a vibration-only reminder is harder to miss.
-    private val SILENT_VIBRATION_PATTERN = longArrayOf(
-        0, 350, 200, 350, 200, 350, 200, 350, 200, 350,
+    // Pulses repeatedly for ~15s total instead of a single default buzz, so a
+    // vibration-only reminder is much harder to miss.
+    private val SILENT_VIBRATION_PATTERN = buildPulsePattern(
+        totalMillis = 15_000,
+        onMillis = 500,
+        offMillis = 300,
     )
+
+    private fun buildPulsePattern(totalMillis: Long, onMillis: Long, offMillis: Long): LongArray {
+        val pattern = mutableListOf(0L) // no initial delay
+        var elapsed = 0L
+        while (elapsed < totalMillis) {
+            pattern.add(onMillis)
+            elapsed += onMillis
+            if (elapsed >= totalMillis) break
+            pattern.add(offMillis)
+            elapsed += offMillis
+        }
+        return pattern.toLongArray()
+    }
 
     private fun ensureChannels(context: Context) {
         val notificationManager =
