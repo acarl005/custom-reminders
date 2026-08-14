@@ -118,6 +118,12 @@ class MainActivity : FlutterFragmentActivity() {
                     healthPermissionLauncher.launch(HealthConnectHelper.requiredPermissions())
                     result.success(null)
                 }
+                "getCurrentIntervalSteps" -> {
+                    GlobalScope.launch(Dispatchers.Main) {
+                        val since = Prefs.activityWindowStartMillis(this@MainActivity)
+                        result.success(HealthConnectHelper.getStepsSince(this@MainActivity, since))
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

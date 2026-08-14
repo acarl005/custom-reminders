@@ -69,4 +69,20 @@ object Prefs {
     fun setLastSkippedForActivity(context: Context, value: Boolean) {
         prefs(context).edit().putBoolean(KEY_LAST_SKIPPED_FOR_ACTIVITY, value).apply()
     }
+
+    /**
+     * Start of the window to query step counts over: since the last activity
+     * check, capped to at most one hour ago so a long-idle feature toggle
+     * doesn't pull in days of steps.
+     */
+    fun activityWindowStartMillis(context: Context): Long {
+        val now = System.currentTimeMillis()
+        val lastCheck = getLastActivityCheckMillis(context)
+        val maxLookbackMillis = 60 * 60 * 1000L
+        return if (lastCheck <= 0 || now - lastCheck > maxLookbackMillis) {
+            now - maxLookbackMillis
+        } else {
+            lastCheck
+        }
+    }
 }

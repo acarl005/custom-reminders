@@ -41,7 +41,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _lastSkippedForActivity = false;
   bool _loaded = false;
   DateTime? _snoozedUntil;
+  int? _currentIntervalSteps;
   Timer? _ticker;
+  Timer? _stepsTicker;
 
   static const List<int> _reminderHours = [
     10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
@@ -53,13 +55,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _init();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+    _stepsTicker =
+        Timer.periodic(const Duration(seconds: 10), (_) => _tickSteps());
+    _tickSteps();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _ticker?.cancel();
+    _stepsTicker?.cancel();
     super.dispose();
+  }
+
+  Future<void> _tickSteps() async {
+    if (!_skipIfActiveEnabled || !_canUseSkipIfActive) {
+      if (_currentIntervalSteps != null && mounted) {
+        setState(() => _currentIntervalSteps = null);
+      }
+      return;
+    }
+    final steps = await _channel.invokeMethod<int>('getCurrentIntervalSteps');
+    if (!mounted) return;
+    setState(() => _currentIntervalSteps = steps);
   }
 
   Future<void> _tick() async {
@@ -294,13 +312,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       color = Colors.deepPurple.shade50;
     }
 
+    final steps = _currentIntervalSteps;
+    final showSteps = steps != null && _snoozedUntil == null && _active;
+
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
       color: color,
       child: ListTile(
         leading: Icon(icon),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(subtitle),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(subtitle),
+            if (showSteps) Text('$steps steps this interval'),
+          ],
+        ),
       ),
     );
   }

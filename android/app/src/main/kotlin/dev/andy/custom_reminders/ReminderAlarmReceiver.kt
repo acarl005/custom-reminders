@@ -66,14 +66,8 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
 
     /** Fails open (returns false, i.e. "don't skip") on any error, timeout, or missing setup. */
     private suspend fun shouldSkipForActivity(context: Context): Boolean {
-        val now = System.currentTimeMillis()
-        val lastCheck = Prefs.getLastActivityCheckMillis(context)
-        val since = if (lastCheck <= 0 || now - lastCheck > MAX_LOOKBACK_MILLIS) {
-            now - MAX_LOOKBACK_MILLIS
-        } else {
-            lastCheck
-        }
-        Prefs.setLastActivityCheckMillis(context, now)
+        val since = Prefs.activityWindowStartMillis(context)
+        Prefs.setLastActivityCheckMillis(context, System.currentTimeMillis())
 
         if (!HealthConnectHelper.isAvailable(context)) {
             Prefs.setLastSkippedForActivity(context, false)
@@ -97,8 +91,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        private const val ACTIVITY_STEP_THRESHOLD = 200L
-        private const val MAX_LOOKBACK_MILLIS = 60 * 60 * 1000L // 1 hour
+        const val ACTIVITY_STEP_THRESHOLD = 200L
         private const val TIMEOUT_MILLIS = 5000L
     }
 }
