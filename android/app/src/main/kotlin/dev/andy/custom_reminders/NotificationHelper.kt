@@ -24,7 +24,15 @@ import androidx.core.app.NotificationManagerCompat
  */
 object NotificationHelper {
     private const val CHANNEL_SOUND_ID = "reminders_sound"
-    private const val CHANNEL_SILENT_ID = "reminders_silent"
+    // Bumped to _v2 because a channel's vibration pattern can't be changed
+    // once created; this forces a fresh channel with the new pattern.
+    private const val CHANNEL_SILENT_ID = "reminders_silent_v2"
+
+    // Pulses several times (~3.5s total) instead of a single default buzz,
+    // so a vibration-only reminder is harder to miss.
+    private val SILENT_VIBRATION_PATTERN = longArrayOf(
+        0, 350, 200, 350, 200, 350, 200, 350, 200, 350,
+    )
 
     private fun ensureChannels(context: Context) {
         val notificationManager =
@@ -54,6 +62,7 @@ object NotificationHelper {
         ).apply {
             description = "Hourly reminder alarms, vibration only"
             enableVibration(true)
+            vibrationPattern = SILENT_VIBRATION_PATTERN
             setSound(null, null)
         }
 
