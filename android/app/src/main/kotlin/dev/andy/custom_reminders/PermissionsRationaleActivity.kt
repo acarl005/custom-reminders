@@ -18,7 +18,7 @@ class PermissionsRationaleActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val textView = TextView(this).apply {
-            text = "Custom Reminders reads your step count from Health Connect " +
+            text = "Squat Reminders reads your step count from Health Connect " +
                 "only to decide whether to skip an hourly reminder when you're " +
                 "already active.\n\nStep data is read on-device and is never " +
                 "stored, shared, or sent anywhere."

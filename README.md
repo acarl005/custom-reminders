@@ -1,4 +1,4 @@
-# Custom Reminders
+# Squat Reminders
 
 A barebones Flutter/Android app that fires hourly reminder notifications, 5 minutes before the hour, from 10:55 AM to 10:55 PM every day. Built for personal use — not published to any app store.
 

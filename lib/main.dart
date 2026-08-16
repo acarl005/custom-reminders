@@ -15,8 +15,14 @@ class ReminderApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Reminders',
+      title: 'Squat Reminders',
       theme: ThemeData(colorSchemeSeed: Colors.deepPurple, useMaterial3: true),
+      darkTheme: ThemeData(
+        colorSchemeSeed: Colors.deepPurple,
+        useMaterial3: true,
+        brightness: Brightness.dark,
+      ),
+      themeMode: ThemeMode.system,
       home: const HomePage(),
     );
   }
@@ -39,6 +45,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _healthConnectAvailable = true;
   bool _stepsPermissionGranted = true;
   bool _lastSkippedForActivity = false;
+  int _lastSkippedStepCount = 0;
   bool _loaded = false;
   DateTime? _snoozedUntil;
   int? _currentIntervalSteps;
@@ -87,12 +94,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final lastSkipped =
         await _channel.invokeMethod<bool>('wasLastReminderSkippedForActivity') ??
             false;
+    final lastSkippedStepCount =
+        await _channel.invokeMethod<int>('getLastSkippedStepCount') ?? 0;
     if (!mounted) return;
     setState(() {
       _snoozedUntil = snoozedUntilMillis > 0
           ? DateTime.fromMillisecondsSinceEpoch(snoozedUntilMillis)
           : null;
       _lastSkippedForActivity = lastSkipped;
+      _lastSkippedStepCount = lastSkippedStepCount;
     });
   }
 
@@ -192,10 +202,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   bool get _canUseSkipIfActive => _healthConnectAvailable && _stepsPermissionGranted;
 
+  /// Picks a shade of [base] appropriate for the current light/dark theme,
+  /// so card backgrounds stay legible in both modes.
+  Color _tone(MaterialColor base, {int light = 50, int dark = 900}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return (isDark ? base[dark] : base[light])!;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Hourly Reminders')),
+      appBar: AppBar(title: const Text('Squat Reminders')),
       body: !_loaded
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -229,10 +246,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     () => _channel.invokeMethod('requestIgnoreBatteryOptimizations'),
                   ),
                 if (_skipIfActiveEnabled && !_healthConnectAvailable)
-                  const Card(
-                    margin: EdgeInsets.all(12),
-                    color: Color(0xFFEEEEEE),
-                    child: Padding(
+                  Card(
+                    margin: const EdgeInsets.all(12),
+                    color: _tone(Colors.grey, light: 200, dark: 800),
+                    child: const Padding(
                       padding: EdgeInsets.all(12),
                       child: Text(
                         "Health Connect isn't available on this device, so "
@@ -253,11 +270,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 if (_lastSkippedForActivity)
                   Card(
                     margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                    color: Colors.green.shade50,
-                    child: const ListTile(
-                      leading: Icon(Icons.directions_walk),
-                      title: Text('Last reminder skipped'),
-                      subtitle: Text('You were already active.'),
+                    color: _tone(Colors.green),
+                    child: ListTile(
+                      leading: const Icon(Icons.directions_walk),
+                      title: const Text('Last reminder skipped'),
+                      subtitle: Text(
+                        'You took $_lastSkippedStepCount steps '
+                        '(threshold: $_activityStepThreshold).',
+                      ),
                     ),
                   ),
                 SwitchListTile(
@@ -303,12 +323,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           'Going off again at ${_formatClock(_snoozedUntil!)} '
           '(in ${_formatCountdown(_snoozedUntil!.difference(now))})';
       icon = Icons.snooze;
-      color = Colors.blue.shade50;
+      color = _tone(Colors.blue);
     } else if (!_active) {
       title = 'Reminders paused';
       subtitle = "You won't get any reminders until you turn this back on.";
       icon = Icons.pause_circle_outline;
-      color = Colors.grey.shade200;
+      color = _tone(Colors.grey, light: 200, dark: 800);
     } else {
       final next = _nextReminderTime();
       title = 'Next reminder';
@@ -316,7 +336,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ? 'Unknown'
           : '${_formatClock(next)} (in ${_formatCountdown(next.difference(now))})';
       icon = Icons.timer_outlined;
-      color = Colors.deepPurple.shade50;
+      color = _tone(Colors.deepPurple);
     }
 
     final steps = _currentIntervalSteps;
@@ -345,7 +365,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Widget _permissionBanner(String message, String actionLabel, VoidCallback onPressed) {
     return Card(
       margin: const EdgeInsets.all(12),
-      color: Colors.amber.shade100,
+      color: _tone(Colors.amber, light: 100),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(

@@ -1,6 +1,7 @@
 package dev.andy.custom_reminders
 
 import android.content.Context
+import java.util.Calendar
 
 /**
  * Simple wrapper around a dedicated SharedPreferences file used to store the
@@ -17,6 +18,7 @@ object Prefs {
     private const val KEY_SKIP_IF_ACTIVE = "skip_if_active"
     private const val KEY_LAST_ACTIVITY_CHECK_MILLIS = "last_activity_check_millis"
     private const val KEY_LAST_SKIPPED_FOR_ACTIVITY = "last_skipped_for_activity"
+    private const val KEY_LAST_SKIPPED_STEP_COUNT = "last_skipped_step_count"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -70,19 +72,59 @@ object Prefs {
         prefs(context).edit().putBoolean(KEY_LAST_SKIPPED_FOR_ACTIVITY, value).apply()
     }
 
+    /** Step count recorded during the most recent activity check (whether or not it caused a skip). */
+    fun getLastSkippedStepCount(context: Context): Long =
+        prefs(context).getLong(KEY_LAST_SKIPPED_STEP_COUNT, 0L)
+
+    fun setLastSkippedStepCount(context: Context, value: Long) {
+        prefs(context).edit().putLong(KEY_LAST_SKIPPED_STEP_COUNT, value).apply()
+    }
+
     /**
      * Start of the window to query step counts over: since the last activity
-     * check, capped to at most one hour ago so a long-idle feature toggle
-     * doesn't pull in days of steps.
+     * check, falling back to the most recent hourly slot boundary (e.g.
+     * 1:55, 2:55, ...) when there's no prior check (e.g. right after
+     * install) or the last check is stale by more than an hour (e.g.
+     * reminders were paused or silenced by DND for a long stretch).
+     *
+     * The fallback is anchored to a fixed point in time rather than a
+     * rolling "now minus one hour" window, so the reported step count for
+     * the current interval doesn't drift downward over time as steps taken
+     * earlier in the interval roll out of a sliding window.
      */
     fun activityWindowStartMillis(context: Context): Long {
         val now = System.currentTimeMillis()
         val lastCheck = getLastActivityCheckMillis(context)
         val maxLookbackMillis = 60 * 60 * 1000L
         return if (lastCheck <= 0 || now - lastCheck > maxLookbackMillis) {
-            now - maxLookbackMillis
+            mostRecentSlotBoundaryMillis()
         } else {
             lastCheck
         }
+    }
+
+    /**
+     * Epoch millis of the most recent *past* occurrence of the hourly :55
+     * slot boundary, strictly before now.
+     *
+     * Uses <= (not <) so that a call made right at/just after a :55 slot
+     * boundary rolls back a full hour instead of collapsing to essentially
+     * "now". That matters because the real background activity check
+     * (ReminderAlarmReceiver) runs exactly at these boundaries: if this
+     * fallback ever fires there (e.g. due to AlarmManager/Doze jitter
+     * nudging the gap between checks slightly past an hour), it must still
+     * resolve to the *previous* slot so the lookback window stays close to
+     * a full hour rather than shrinking to a few seconds — which would make
+     * getStepsSince() see ~0 steps and "skip if already active" never skip.
+     */
+    private fun mostRecentSlotBoundaryMillis(): Long {
+        val cal = Calendar.getInstance()
+        if (cal.get(Calendar.MINUTE) <= AlarmScheduler.MINUTE) {
+            cal.add(Calendar.HOUR_OF_DAY, -1)
+        }
+        cal.set(Calendar.MINUTE, AlarmScheduler.MINUTE)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
     }
 }

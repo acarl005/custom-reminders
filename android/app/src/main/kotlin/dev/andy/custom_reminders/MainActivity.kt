@@ -108,6 +108,7 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 "wasLastReminderSkippedForActivity" ->
                     result.success(Prefs.getLastSkippedForActivity(this))
+                "getLastSkippedStepCount" -> result.success(Prefs.getLastSkippedStepCount(this))
                 "isHealthConnectAvailable" -> result.success(HealthConnectHelper.isAvailable(this))
                 "hasStepsPermission" -> {
                     GlobalScope.launch(Dispatchers.Main) {

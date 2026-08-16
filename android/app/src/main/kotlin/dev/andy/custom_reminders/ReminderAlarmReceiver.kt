@@ -87,6 +87,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
 
         val shouldSkip = steps >= ACTIVITY_STEP_THRESHOLD
         Prefs.setLastSkippedForActivity(context, shouldSkip)
+        Prefs.setLastSkippedStepCount(context, steps)
         return shouldSkip
     }
 
