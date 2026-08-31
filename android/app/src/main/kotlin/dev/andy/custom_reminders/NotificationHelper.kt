@@ -132,6 +132,9 @@ object NotificationHelper {
             .setContentText("Do 10 squats")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            // Not sensitive content, so show it fully (and allow dismissing it)
+            // on the lock screen even when "show sensitive content" is off.
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
             .setContentIntent(contentPendingIntent)
             .setDeleteIntent(dismissPendingIntent)

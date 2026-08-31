@@ -19,9 +19,29 @@ object Prefs {
     private const val KEY_LAST_ACTIVITY_CHECK_MILLIS = "last_activity_check_millis"
     private const val KEY_LAST_SKIPPED_FOR_ACTIVITY = "last_skipped_for_activity"
     private const val KEY_LAST_SKIPPED_STEP_COUNT = "last_skipped_step_count"
+    private const val KEY_START_HOUR = "start_hour"
+    private const val KEY_END_HOUR = "end_hour"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+    /** First hour of the day (0-23) whose :55 slot fires a reminder. */
+    fun getStartHour(context: Context): Int =
+        prefs(context).getInt(KEY_START_HOUR, AlarmScheduler.DEFAULT_START_HOUR).coerceIn(0, 23)
+
+    /** Last hour of the day (0-23) whose :55 slot fires a reminder; never before the start hour. */
+    fun getEndHour(context: Context): Int =
+        prefs(context).getInt(KEY_END_HOUR, AlarmScheduler.DEFAULT_END_HOUR)
+            .coerceIn(getStartHour(context), 23)
+
+    fun setReminderWindow(context: Context, startHour: Int, endHour: Int) {
+        val start = startHour.coerceIn(0, 23)
+        val end = endHour.coerceIn(start, 23)
+        prefs(context).edit()
+            .putInt(KEY_START_HOUR, start)
+            .putInt(KEY_END_HOUR, end)
+            .apply()
+    }
 
     fun getPaused(context: Context): Boolean =
         prefs(context).getBoolean(KEY_PAUSED, false)

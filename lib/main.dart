@@ -5,6 +5,10 @@ import 'package:flutter/services.dart';
 
 const _channel = MethodChannel('dev.andy.custom_reminders/native');
 
+/// Reminders always fire 5 minutes before the hour; only the hour range is
+/// configurable.
+const _reminderMinute = 55;
+
 void main() {
   runApp(const ReminderApp());
 }
@@ -49,13 +53,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _loaded = false;
   DateTime? _snoozedUntil;
   int? _currentIntervalSteps;
-  int _activityStepThreshold = 200;
+  int _activityStepThreshold = 800;
+  int _startHour = 10;
+  int _endHour = 22;
   Timer? _ticker;
   Timer? _stepsTicker;
+  Timer? _windowSaveDebounce;
 
-  static const List<int> _reminderHours = [
-    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
-  ];
+  /// Every hour whose :55 slot fires a reminder, in chronological order.
+  List<int> get _reminderHours =>
+      [for (var hour = _startHour; hour <= _endHour; hour++) hour];
 
   @override
   void initState() {
@@ -73,6 +80,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _ticker?.cancel();
     _stepsTicker?.cancel();
+    _windowSaveDebounce?.cancel();
     super.dispose();
   }
 
@@ -110,19 +118,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (!_active) return null;
     final now = DateTime.now();
     for (final hour in _reminderHours) {
-      final candidate = DateTime(now.year, now.month, now.day, hour, 55);
+      final candidate =
+          DateTime(now.year, now.month, now.day, hour, _reminderMinute);
       if (candidate.isAfter(now)) return candidate;
     }
     final tomorrow = now.add(const Duration(days: 1));
-    return DateTime(tomorrow.year, tomorrow.month, tomorrow.day, _reminderHours.first, 55);
+    return DateTime(tomorrow.year, tomorrow.month, tomorrow.day,
+        _reminderHours.first, _reminderMinute);
   }
 
-  static String _formatClock(DateTime dt) {
-    final h12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-    final minute = dt.minute.toString().padLeft(2, '0');
-    final amPm = dt.hour < 12 ? 'AM' : 'PM';
-    return '$h12:$minute $amPm';
-  }
+  static String _pad(int value) => value.toString().padLeft(2, '0');
+
+  static String _formatClock(DateTime dt) =>
+      '${_pad(dt.hour)}:${_pad(dt.minute)}';
+
+  /// The wall-clock time an hour slot fires at, e.g. `07:55`.
+  static String _formatHourSlot(int hour) => '${_pad(hour)}:$_reminderMinute';
 
   static String _formatCountdown(Duration d) {
     if (d.isNegative) return 'any moment now';
@@ -149,12 +160,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final skipIfActiveEnabled =
         await _channel.invokeMethod<bool>('getSkipIfActiveEnabled') ?? true;
     final activityStepThreshold =
-        await _channel.invokeMethod<int>('getActivityStepThreshold') ?? 200;
+        await _channel.invokeMethod<int>('getActivityStepThreshold') ??
+            _activityStepThreshold;
+    final startHour =
+        await _channel.invokeMethod<int>('getStartHour') ?? _startHour;
+    final endHour = await _channel.invokeMethod<int>('getEndHour') ?? _endHour;
     setState(() {
       _active = !paused;
       _soundEnabled = soundEnabled;
       _skipIfActiveEnabled = skipIfActiveEnabled;
       _activityStepThreshold = activityStepThreshold;
+      _startHour = startHour;
+      _endHour = endHour;
       _loaded = true;
     });
     await _refreshPermissionStatus();
@@ -200,6 +217,35 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await _channel.invokeMethod('setSkipIfActiveEnabled', {'value': value});
   }
 
+  void _setStartHour(int hour) {
+    setState(() {
+      _startHour = hour;
+      // The window can't run backwards, so drag the end along if needed.
+      if (_endHour < _startHour) _endHour = _startHour;
+    });
+    _saveReminderWindowSoon();
+  }
+
+  void _setEndHour(int hour) {
+    setState(() {
+      _endHour = hour;
+      if (_startHour > _endHour) _startHour = _endHour;
+    });
+    _saveReminderWindowSoon();
+  }
+
+  /// Debounced so that flinging a wheel past a dozen hours doesn't rewrite
+  /// prefs and re-schedule every alarm for each hour it scrolls through.
+  void _saveReminderWindowSoon() {
+    _windowSaveDebounce?.cancel();
+    _windowSaveDebounce = Timer(const Duration(milliseconds: 400), () {
+      _channel.invokeMethod('setReminderWindow', {
+        'startHour': _startHour,
+        'endHour': _endHour,
+      });
+    });
+  }
+
   bool get _canUseSkipIfActive => _healthConnectAvailable && _stepsPermissionGranted;
 
   /// Picks a shade of [base] appropriate for the current light/dark theme,
@@ -217,12 +263,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                   child: Text(
-                    'Fires every hour, 5 minutes before the hour, '
-                    'from 10:55 AM to 10:55 PM.',
-                    style: TextStyle(color: Colors.grey),
+                    'Fires every hour, 5 minutes before the hour, from '
+                    '${_formatHourSlot(_startHour)} to '
+                    '${_formatHourSlot(_endHour)}.',
+                    style: const TextStyle(color: Colors.grey),
                   ),
                 ),
                 if (!_canScheduleExactAlarms)
@@ -294,12 +341,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   value: _soundEnabled,
                   onChanged: _setSoundEnabled,
                 ),
+                _reminderWindowCard(),
                 SwitchListTile(
                   title: const Text('Skip if already active'),
                   subtitle: Text(
                     _canUseSkipIfActive
-                        ? "Don't remind me if I've already taken 200+ steps "
-                            'since the last reminder'
+                        ? "Don't remind me if I've already taken "
+                            '$_activityStepThreshold+ steps since the last reminder'
                         : 'Grant step access above to use this',
                   ),
                   value: _skipIfActiveEnabled,
@@ -362,6 +410,48 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
+  Widget _reminderWindowCard() {
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Reminder window',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 2),
+            const Text(
+              'Swipe up or down to pick the first and last reminder.',
+              style: TextStyle(color: Colors.grey),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: _HourWheel(
+                    label: 'First',
+                    value: _startHour,
+                    onChanged: _setStartHour,
+                  ),
+                ),
+                const SizedBox(width: 24),
+                Expanded(
+                  child: _HourWheel(
+                    label: 'Last',
+                    value: _endHour,
+                    onChanged: _setEndHour,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _permissionBanner(String message, String actionLabel, VoidCallback onPressed) {
     return Card(
       margin: const EdgeInsets.all(12),
@@ -382,6 +472,94 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A vertically-swipeable wheel of the 24 hour slots (`00:55` … `23:55`).
+class _HourWheel extends StatefulWidget {
+  const _HourWheel({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  State<_HourWheel> createState() => _HourWheelState();
+}
+
+class _HourWheelState extends State<_HourWheel> {
+  static const double _itemExtent = 40;
+
+  late final FixedExtentScrollController _controller =
+      FixedExtentScrollController(initialItem: widget.value);
+
+  @override
+  void didUpdateWidget(_HourWheel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The sibling wheel can push this one (the window can't run backwards),
+    // so follow value changes that didn't originate from this wheel.
+    if (_controller.hasClients && widget.value != _controller.selectedItem) {
+      _controller.animateToItem(
+        widget.value,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        Text(widget.label, style: theme.textTheme.labelMedium),
+        SizedBox(
+          height: _itemExtent * 3,
+          child: Stack(
+            children: [
+              // Highlights the centered (selected) row.
+              Center(
+                child: Container(
+                  height: _itemExtent,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              ListWheelScrollView.useDelegate(
+                controller: _controller,
+                itemExtent: _itemExtent,
+                diameterRatio: 1.6,
+                perspective: 0.004,
+                overAndUnderCenterOpacity: 0.35,
+                physics: const FixedExtentScrollPhysics(),
+                onSelectedItemChanged: widget.onChanged,
+                childDelegate: ListWheelChildBuilderDelegate(
+                  childCount: 24,
+                  builder: (context, index) => Center(
+                    child: Text(
+                      _HomePageState._formatHourSlot(index),
+                      style: theme.textTheme.titleLarge,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

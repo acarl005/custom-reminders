@@ -9,25 +9,38 @@ import androidx.core.app.AlarmManagerCompat
 import java.util.Calendar
 
 /**
- * Schedules the hourly reminder alarms (10:55 through 22:55, daily) and
- * one-off snooze alarms using the platform AlarmManager. Alarms are exact and
- * fire even while the device is idle/Doze, and each slot reschedules itself
- * for the next day when it fires so the cycle continues indefinitely without
- * needing the app to be open.
+ * Schedules the hourly reminder alarms (every :55 within the user's
+ * configured start/end hour window, daily) and one-off snooze alarms using
+ * the platform AlarmManager. Alarms are exact and fire even while the device
+ * is idle/Doze, and each slot reschedules itself for the next day when it
+ * fires so the cycle continues indefinitely without needing the app to be
+ * open.
  */
 object AlarmScheduler {
     const val EXTRA_HOUR = "hour"
     const val EXTRA_IS_SNOOZE = "is_snooze"
 
-    const val START_HOUR = 10
-    const val END_HOUR = 22
+    const val DEFAULT_START_HOUR = 10
+    const val DEFAULT_END_HOUR = 22
     const val MINUTE = 55
 
     private const val SNOOZE_REQUEST_CODE_OFFSET = 500
 
+    /** Whether the given hour's :55 slot is inside the user's configured window. */
+    fun isHourInWindow(context: Context, hour: Int): Boolean =
+        hour in Prefs.getStartHour(context)..Prefs.getEndHour(context)
+
+    /**
+     * Schedules every in-window slot and cancels any out-of-window ones, so
+     * this can be called after the window changes to reconcile the whole day.
+     */
     fun scheduleAll(context: Context) {
-        for (hour in START_HOUR..END_HOUR) {
-            scheduleSlot(context, hour)
+        for (hour in 0..23) {
+            if (isHourInWindow(context, hour)) {
+                scheduleSlot(context, hour)
+            } else {
+                cancelSlot(context, hour)
+            }
         }
     }
 
@@ -35,6 +48,19 @@ object AlarmScheduler {
     fun scheduleSlot(context: Context, hour: Int) {
         val trigger = nextOccurrenceMillis(hour)
         scheduleExact(context, trigger, hour, isSnooze = false, requestCode = hour)
+    }
+
+    /** Cancels the daily reminder for the given hour, if one is scheduled. */
+    fun cancelSlot(context: Context, hour: Int) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            hour,
+            Intent(context, ReminderAlarmReceiver::class.java),
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+        ) ?: return
+        alarmManager.cancel(pendingIntent)
+        pendingIntent.cancel()
     }
 
     /** Schedules a one-off reminder 5 minutes from now for the given hour slot (snooze). Returns the trigger time in epoch millis. */

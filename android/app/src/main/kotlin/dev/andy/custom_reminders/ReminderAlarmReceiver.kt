@@ -26,6 +26,9 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         // Keep the daily cycle alive regardless of pause/DND state so that
         // toggling "paused" off later doesn't require re-scheduling anything.
         if (!isSnooze) {
+            // The window may have shrunk since this alarm was scheduled, in
+            // which case let the slot die out instead of renewing it.
+            if (!AlarmScheduler.isHourInWindow(context, hour)) return
             AlarmScheduler.scheduleSlot(context, hour)
         } else {
             // The snooze period has elapsed, whether or not we end up showing
@@ -92,7 +95,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        const val ACTIVITY_STEP_THRESHOLD = 200L
+        const val ACTIVITY_STEP_THRESHOLD = 800L
         private const val TIMEOUT_MILLIS = 5000L
     }
 }

@@ -58,6 +58,18 @@ class MainActivity : FlutterFragmentActivity() {
                     AlarmScheduler.scheduleAll(this)
                     result.success(null)
                 }
+                "getStartHour" -> result.success(Prefs.getStartHour(this))
+                "getEndHour" -> result.success(Prefs.getEndHour(this))
+                "setReminderWindow" -> {
+                    Prefs.setReminderWindow(
+                        this,
+                        call.argument<Int>("startHour") ?: AlarmScheduler.DEFAULT_START_HOUR,
+                        call.argument<Int>("endHour") ?: AlarmScheduler.DEFAULT_END_HOUR,
+                    )
+                    // Reconcile the whole day so newly out-of-window slots stop firing.
+                    AlarmScheduler.scheduleAll(this)
+                    result.success(null)
+                }
                 "canScheduleExactAlarms" -> result.success(AlarmScheduler.canScheduleExactAlarms(this))
                 "requestScheduleExactAlarmPermission" -> {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
