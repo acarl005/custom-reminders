@@ -45,14 +45,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _canScheduleExactAlarms = true;
   bool _notificationsEnabled = true;
   bool _ignoringBatteryOptimizations = true;
-  bool _skipIfActiveEnabled = true;
+  bool _scaleWithActivityEnabled = true;
   bool _healthConnectAvailable = true;
   bool _stepsPermissionGranted = true;
-  bool _lastSkippedForActivity = false;
-  int _lastSkippedStepCount = 0;
+  int _lastReminderSquats = _unknown;
+  int _lastReminderStepCount = _unknown;
   bool _loaded = false;
   DateTime? _snoozedUntil;
   int? _currentIntervalSteps;
+  int _maxSquats = 10;
   int _activityStepThreshold = 800;
   int _startHour = 9;
   int _endHour = 21;
@@ -60,9 +61,26 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Timer? _stepsTicker;
   Timer? _windowSaveDebounce;
 
+  /// Mirrors the native sentinel for "no reminder yet" / "steps unknown".
+  static const int _unknown = -1;
+
   /// Every hour whose :55 slot fires a reminder, in chronological order.
   List<int> get _reminderHours =>
       [for (var hour = _startHour; hour <= _endHour; hour++) hour];
+
+  /// Mirrors the native `Squats.forSteps`: the ask drops by one squat for
+  /// every 1/10th of the step threshold walked since the last reminder.
+  int _squatsForSteps(int steps) {
+    if (steps <= 0) return _maxSquats;
+    if (steps >= _activityStepThreshold) return 0;
+    final stepsPerSquat = _activityStepThreshold ~/ _maxSquats;
+    return _maxSquats - steps ~/ stepsPerSquat;
+  }
+
+  static String _squatLabel(int squats) =>
+      squats == 1 ? '1 squat' : '$squats squats';
+
+  static String _stepLabel(int steps) => steps == 1 ? '1 step' : '$steps steps';
 
   @override
   void initState() {
@@ -85,7 +103,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _tickSteps() async {
-    if (!_skipIfActiveEnabled || !_canUseSkipIfActive) {
+    if (!_scaleWithActivityEnabled || !_canScaleWithActivity) {
       if (_currentIntervalSteps != null && mounted) {
         setState(() => _currentIntervalSteps = null);
       }
@@ -99,18 +117,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Future<void> _tick() async {
     final snoozedUntilMillis =
         await _channel.invokeMethod<int>('getSnoozedUntil') ?? 0;
-    final lastSkipped =
-        await _channel.invokeMethod<bool>('wasLastReminderSkippedForActivity') ??
-            false;
-    final lastSkippedStepCount =
-        await _channel.invokeMethod<int>('getLastSkippedStepCount') ?? 0;
+    final lastReminderSquats =
+        await _channel.invokeMethod<int>('getLastReminderSquats') ?? _unknown;
+    final lastReminderStepCount =
+        await _channel.invokeMethod<int>('getLastReminderStepCount') ?? _unknown;
     if (!mounted) return;
     setState(() {
       _snoozedUntil = snoozedUntilMillis > 0
           ? DateTime.fromMillisecondsSinceEpoch(snoozedUntilMillis)
           : null;
-      _lastSkippedForActivity = lastSkipped;
-      _lastSkippedStepCount = lastSkippedStepCount;
+      _lastReminderSquats = lastReminderSquats;
+      _lastReminderStepCount = lastReminderStepCount;
     });
   }
 
@@ -157,19 +174,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final paused = await _channel.invokeMethod<bool>('getPaused') ?? false;
     final soundEnabled =
         await _channel.invokeMethod<bool>('getSoundEnabled') ?? true;
-    final skipIfActiveEnabled =
-        await _channel.invokeMethod<bool>('getSkipIfActiveEnabled') ?? true;
+    final scaleWithActivityEnabled =
+        await _channel.invokeMethod<bool>('getScaleWithActivityEnabled') ?? true;
     final activityStepThreshold =
         await _channel.invokeMethod<int>('getActivityStepThreshold') ??
             _activityStepThreshold;
+    final maxSquats =
+        await _channel.invokeMethod<int>('getMaxSquats') ?? _maxSquats;
     final startHour =
         await _channel.invokeMethod<int>('getStartHour') ?? _startHour;
     final endHour = await _channel.invokeMethod<int>('getEndHour') ?? _endHour;
     setState(() {
       _active = !paused;
       _soundEnabled = soundEnabled;
-      _skipIfActiveEnabled = skipIfActiveEnabled;
+      _scaleWithActivityEnabled = scaleWithActivityEnabled;
       _activityStepThreshold = activityStepThreshold;
+      _maxSquats = maxSquats;
       _startHour = startHour;
       _endHour = endHour;
       _loaded = true;
@@ -209,12 +229,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await _channel.invokeMethod('setSoundEnabled', {'value': value});
   }
 
-  Future<void> _setSkipIfActiveEnabled(bool value) async {
+  Future<void> _setScaleWithActivityEnabled(bool value) async {
     setState(() {
-      _skipIfActiveEnabled = value;
+      _scaleWithActivityEnabled = value;
       if (!value) _currentIntervalSteps = null;
     });
-    await _channel.invokeMethod('setSkipIfActiveEnabled', {'value': value});
+    await _channel.invokeMethod('setScaleWithActivityEnabled', {'value': value});
   }
 
   void _setStartHour(int hour) {
@@ -246,7 +266,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  bool get _canUseSkipIfActive => _healthConnectAvailable && _stepsPermissionGranted;
+  bool get _canScaleWithActivity =>
+      _healthConnectAvailable && _stepsPermissionGranted;
 
   /// Picks a shade of [base] appropriate for the current light/dark theme,
   /// so card backgrounds stay legible in both modes.
@@ -272,6 +293,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     style: const TextStyle(color: Colors.grey),
                   ),
                 ),
+                if (_scaleWithActivityEnabled && _canScaleWithActivity)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                    child: Text(
+                      'Each ${_activityStepThreshold ~/ _maxSquats} steps you '
+                      'take between reminders knocks one squat off the next '
+                      'ask, down from $_maxSquats to none at '
+                      '$_activityStepThreshold steps.',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  ),
                 if (!_canScheduleExactAlarms)
                   _permissionBanner(
                     'Exact alarm permission is required for reminders to '
@@ -292,41 +324,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     'Fix',
                     () => _channel.invokeMethod('requestIgnoreBatteryOptimizations'),
                   ),
-                if (_skipIfActiveEnabled && !_healthConnectAvailable)
+                if (_scaleWithActivityEnabled && !_healthConnectAvailable)
                   Card(
                     margin: const EdgeInsets.all(12),
                     color: _tone(Colors.grey, light: 200, dark: 800),
-                    child: const Padding(
-                      padding: EdgeInsets.all(12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
                       child: Text(
                         "Health Connect isn't available on this device, so "
-                        '"Skip if already active" has no effect.',
+                        'every reminder asks for the full $_maxSquats squats.',
                       ),
                     ),
                   ),
-                if (_skipIfActiveEnabled &&
+                if (_scaleWithActivityEnabled &&
                     _healthConnectAvailable &&
                     !_stepsPermissionGranted)
                   _permissionBanner(
-                    'Grant step-count access so reminders can be skipped '
-                    "when you're already active.",
+                    'Grant step-count access so reminders can ask for fewer '
+                    "squats when you've already been walking.",
                     'Grant',
                     () => _channel.invokeMethod('requestStepsPermission'),
                   ),
                 _statusCard(),
-                if (_lastSkippedForActivity)
-                  Card(
-                    margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                    color: _tone(Colors.green),
-                    child: ListTile(
-                      leading: const Icon(Icons.directions_walk),
-                      title: const Text('Last reminder skipped'),
-                      subtitle: Text(
-                        'You took $_lastSkippedStepCount steps '
-                        '(threshold: $_activityStepThreshold).',
-                      ),
-                    ),
-                  ),
+                _lastReminderCard(),
                 SwitchListTile(
                   title: const Text('Reminders active'),
                   subtitle: Text(_active ? 'Reminders are on' : 'Paused'),
@@ -343,15 +363,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 ),
                 _reminderWindowCard(),
                 SwitchListTile(
-                  title: const Text('Skip if already active'),
+                  title: const Text('Scale with activity'),
                   subtitle: Text(
-                    _canUseSkipIfActive
-                        ? "Don't remind me if I've already taken "
-                            '$_activityStepThreshold+ steps since the last reminder'
+                    _canScaleWithActivity
+                        ? 'Ask for fewer squats the more steps I take between '
+                            'reminders, and none at $_activityStepThreshold+'
                         : 'Grant step access above to use this',
                   ),
-                  value: _skipIfActiveEnabled,
-                  onChanged: _canUseSkipIfActive ? _setSkipIfActiveEnabled : null,
+                  value: _scaleWithActivityEnabled,
+                  onChanged:
+                      _canScaleWithActivity ? _setScaleWithActivityEnabled : null,
                 ),
               ],
             ),
@@ -388,8 +409,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
 
     final steps = _currentIntervalSteps;
-    final showSteps =
-        steps != null && _skipIfActiveEnabled && _snoozedUntil == null && _active;
+    final showSteps = steps != null &&
+        _scaleWithActivityEnabled &&
+        _snoozedUntil == null &&
+        _active;
 
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
@@ -403,8 +426,40 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           children: [
             Text(subtitle),
             if (showSteps)
-              Text('$steps/$_activityStepThreshold steps in this interval'),
+              Text(
+                '$steps/$_activityStepThreshold steps in this interval, so '
+                "it'll ask for "
+                '${_squatsForSteps(steps) == 0 ? "nothing" : _squatLabel(_squatsForSteps(steps))}',
+              ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Recaps what the most recent reminder actually asked for, including the
+  /// activity it was scaled from — which is the only trace of a reminder that
+  /// scaled all the way down to nothing and never showed up.
+  Widget _lastReminderCard() {
+    final squats = _lastReminderSquats;
+    if (squats == _unknown) return const SizedBox.shrink();
+
+    final steps = _lastReminderStepCount;
+    final skipped = squats == 0;
+    final stepsSuffix = steps == _unknown
+        ? ''
+        : ' after ${_stepLabel(steps)} since the one before it';
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      color: skipped ? _tone(Colors.green) : _tone(Colors.blueGrey),
+      child: ListTile(
+        leading: Icon(skipped ? Icons.directions_walk : Icons.fitness_center),
+        title: Text(skipped ? 'Last reminder skipped' : 'Last reminder'),
+        subtitle: Text(
+          skipped
+              ? 'You already walked off the whole set$stepsSuffix.'
+              : 'Asked for ${_squatLabel(squats)}$stepsSuffix.',
         ),
       ),
     );

@@ -113,14 +113,13 @@ class MainActivity : FlutterFragmentActivity() {
                     startActivity(intent)
                     result.success(null)
                 }
-                "getSkipIfActiveEnabled" -> result.success(Prefs.getSkipIfActiveEnabled(this))
-                "setSkipIfActiveEnabled" -> {
-                    Prefs.setSkipIfActiveEnabled(this, call.argument<Boolean>("value") ?: true)
+                "getScaleWithActivityEnabled" -> result.success(Prefs.getScaleWithActivityEnabled(this))
+                "setScaleWithActivityEnabled" -> {
+                    Prefs.setScaleWithActivityEnabled(this, call.argument<Boolean>("value") ?: true)
                     result.success(null)
                 }
-                "wasLastReminderSkippedForActivity" ->
-                    result.success(Prefs.getLastSkippedForActivity(this))
-                "getLastSkippedStepCount" -> result.success(Prefs.getLastSkippedStepCount(this))
+                "getLastReminderSquats" -> result.success(Prefs.getLastReminderSquats(this))
+                "getLastReminderStepCount" -> result.success(Prefs.getLastReminderStepCount(this))
                 "isHealthConnectAvailable" -> result.success(HealthConnectHelper.isAvailable(this))
                 "hasStepsPermission" -> {
                     GlobalScope.launch(Dispatchers.Main) {
@@ -137,8 +136,8 @@ class MainActivity : FlutterFragmentActivity() {
                         result.success(HealthConnectHelper.getStepsSince(this@MainActivity, since))
                     }
                 }
-                "getActivityStepThreshold" ->
-                    result.success(ReminderAlarmReceiver.ACTIVITY_STEP_THRESHOLD)
+                "getActivityStepThreshold" -> result.success(Squats.STEP_THRESHOLD)
+                "getMaxSquats" -> result.success(Squats.MAX)
                 else -> result.notImplemented()
             }
         }

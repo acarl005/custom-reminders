@@ -11,11 +11,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Fires when a scheduled reminder alarm goes off (either a regular hourly
- * slot or a snoozed one-off). Decides whether to actually show a notification
- * based on the paused toggle, the current Do Not Disturb state, and
- * (optionally) recent step activity, then (for regular, non-snoozed alarms)
- * reschedules the same slot for 24 hours later to keep the daily cycle going
- * indefinitely.
+ * slot or a snoozed one-off). Decides whether to show a notification (and how
+ * many squats it should ask for) based on the paused toggle, the current Do
+ * Not Disturb state, and (optionally) recent step activity, then (for
+ * regular, non-snoozed alarms) reschedules the same slot for 24 hours later
+ * to keep the daily cycle going indefinitely.
  */
 class ReminderAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -45,57 +45,60 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             return
         }
 
-        // Only the regular hourly cycle can be skipped for activity; a snooze
-        // is an explicit request to be reminded again shortly, so always show it.
-        if (!isSnooze && Prefs.getSkipIfActiveEnabled(context)) {
-            val pendingResult = goAsync()
-            val appContext = context.applicationContext
-            GlobalScope.launch(Dispatchers.IO) {
-                try {
-                    val shouldSkip = shouldSkipForActivity(appContext)
-                    if (!shouldSkip) {
-                        NotificationHelper.show(appContext, hour)
-                    }
-                } finally {
-                    pendingResult.finish()
-                }
-            }
+        // A snooze is an explicit request to be reminded again shortly, so it
+        // re-asks for whatever the reminder being snoozed asked for rather
+        // than re-measuring activity (which would let the walk to the kitchen
+        // during the snooze erode the set the user already agreed to).
+        if (isSnooze) {
+            val squats = Prefs.getLastReminderSquats(context).takeIf { it > 0 } ?: Squats.MAX
+            NotificationHelper.show(context, hour, squats, Prefs.getLastReminderStepCount(context))
             return
         }
 
-        Prefs.setLastSkippedForActivity(context, false)
-        NotificationHelper.show(context, hour)
+        if (!Prefs.getScaleWithActivityEnabled(context)) {
+            Prefs.setLastReminder(context, Squats.MAX, Prefs.UNKNOWN)
+            NotificationHelper.show(context, hour, Squats.MAX, Prefs.UNKNOWN)
+            return
+        }
+
+        val pendingResult = goAsync()
+        val appContext = context.applicationContext
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val steps = recentSteps(appContext)
+                val squats = if (steps == Prefs.UNKNOWN) Squats.MAX else Squats.forSteps(steps)
+                Prefs.setLastReminder(appContext, squats, steps)
+                // Already walked off the whole set, so stay quiet entirely.
+                if (squats > 0) {
+                    NotificationHelper.show(appContext, hour, squats, steps)
+                }
+            } finally {
+                pendingResult.finish()
+            }
+        }
     }
 
-    /** Fails open (returns false, i.e. "don't skip") on any error, timeout, or missing setup. */
-    private suspend fun shouldSkipForActivity(context: Context): Boolean {
+    /**
+     * Steps taken since the last activity check, or [Prefs.UNKNOWN] when step
+     * data isn't readable. Fails open (i.e. the caller asks for a full set of
+     * squats) on any error, timeout, or missing setup.
+     */
+    private suspend fun recentSteps(context: Context): Long {
         val since = Prefs.activityWindowStartMillis(context)
         Prefs.setLastActivityCheckMillis(context, System.currentTimeMillis())
 
-        if (!HealthConnectHelper.isAvailable(context)) {
-            Prefs.setLastSkippedForActivity(context, false)
-            return false
-        }
+        if (!HealthConnectHelper.isAvailable(context)) return Prefs.UNKNOWN
         val hasPermission = withTimeoutOrNull(TIMEOUT_MILLIS) {
             HealthConnectHelper.hasStepsPermission(context)
         } ?: false
-        if (!hasPermission) {
-            Prefs.setLastSkippedForActivity(context, false)
-            return false
-        }
+        if (!hasPermission) return Prefs.UNKNOWN
 
-        val steps = withTimeoutOrNull(TIMEOUT_MILLIS) {
+        return withTimeoutOrNull(TIMEOUT_MILLIS) {
             HealthConnectHelper.getStepsSince(context, since)
-        } ?: 0L
-
-        val shouldSkip = steps >= ACTIVITY_STEP_THRESHOLD
-        Prefs.setLastSkippedForActivity(context, shouldSkip)
-        Prefs.setLastSkippedStepCount(context, steps)
-        return shouldSkip
+        } ?: Prefs.UNKNOWN
     }
 
     companion object {
-        const val ACTIVITY_STEP_THRESHOLD = 800L
         private const val TIMEOUT_MILLIS = 5000L
     }
 }

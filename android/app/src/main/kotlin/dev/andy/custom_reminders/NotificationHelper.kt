@@ -86,7 +86,11 @@ object NotificationHelper {
         notificationManager.createNotificationChannel(silentChannel)
     }
 
-    fun show(context: Context, hour: Int) {
+    /**
+     * Shows a reminder asking for [squats] squats. [steps] is the step count
+     * the ask was scaled from, or [Prefs.UNKNOWN] when activity wasn't measured.
+     */
+    fun show(context: Context, hour: Int, squats: Int, steps: Long) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ActivityCompat.checkSelfPermission(
                 context,
@@ -126,10 +130,18 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+        val squatLabel = if (squats == 1) "1 squat" else "$squats squats"
+        val stepLabel = if (steps == 1L) "1 step" else "$steps steps"
+        val contentText = if (steps == Prefs.UNKNOWN) {
+            "Do $squatLabel"
+        } else {
+            "Do $squatLabel — $stepLabel since the last reminder"
+        }
+
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Squat time!")
-            .setContentText("Do 10 squats")
+            .setContentText(contentText)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             // Not sensitive content, so show it fully (and allow dismissing it)

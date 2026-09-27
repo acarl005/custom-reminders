@@ -15,12 +15,15 @@ object Prefs {
     private const val KEY_PAUSED = "paused"
     private const val KEY_SOUND_ENABLED = "sound_enabled"
     private const val KEY_SNOOZED_UNTIL = "snoozed_until"
-    private const val KEY_SKIP_IF_ACTIVE = "skip_if_active"
+    private const val KEY_SCALE_WITH_ACTIVITY = "scale_with_activity"
     private const val KEY_LAST_ACTIVITY_CHECK_MILLIS = "last_activity_check_millis"
-    private const val KEY_LAST_SKIPPED_FOR_ACTIVITY = "last_skipped_for_activity"
-    private const val KEY_LAST_SKIPPED_STEP_COUNT = "last_skipped_step_count"
+    private const val KEY_LAST_REMINDER_SQUATS = "last_reminder_squats"
+    private const val KEY_LAST_REMINDER_STEP_COUNT = "last_reminder_step_count"
     private const val KEY_START_HOUR = "start_hour"
     private const val KEY_END_HOUR = "end_hour"
+
+    /** Sentinel for "no reminder has happened yet" / "step count unknown". */
+    const val UNKNOWN = -1L
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -69,11 +72,11 @@ object Prefs {
         prefs(context).edit().remove(KEY_SNOOZED_UNTIL).apply()
     }
 
-    fun getSkipIfActiveEnabled(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_SKIP_IF_ACTIVE, true)
+    fun getScaleWithActivityEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_SCALE_WITH_ACTIVITY, true)
 
-    fun setSkipIfActiveEnabled(context: Context, value: Boolean) {
-        prefs(context).edit().putBoolean(KEY_SKIP_IF_ACTIVE, value).apply()
+    fun setScaleWithActivityEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_SCALE_WITH_ACTIVITY, value).apply()
     }
 
     /** Epoch millis marking the start of the window to check steps over next time. */
@@ -84,20 +87,26 @@ object Prefs {
         prefs(context).edit().putLong(KEY_LAST_ACTIVITY_CHECK_MILLIS, millis).apply()
     }
 
-    /** Whether the most recent hourly reminder was skipped because the user was already active. */
-    fun getLastSkippedForActivity(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_LAST_SKIPPED_FOR_ACTIVITY, false)
+    /**
+     * Squats asked for by the most recent hourly reminder ([UNKNOWN] if none
+     * has happened yet). Zero means the reminder was skipped entirely because
+     * the user had already walked off the whole set.
+     */
+    fun getLastReminderSquats(context: Context): Int =
+        prefs(context).getInt(KEY_LAST_REMINDER_SQUATS, UNKNOWN.toInt())
 
-    fun setLastSkippedForActivity(context: Context, value: Boolean) {
-        prefs(context).edit().putBoolean(KEY_LAST_SKIPPED_FOR_ACTIVITY, value).apply()
-    }
+    /**
+     * Steps measured for the most recent hourly reminder, or [UNKNOWN] when
+     * activity scaling was off or step data couldn't be read.
+     */
+    fun getLastReminderStepCount(context: Context): Long =
+        prefs(context).getLong(KEY_LAST_REMINDER_STEP_COUNT, UNKNOWN)
 
-    /** Step count recorded during the most recent activity check (whether or not it caused a skip). */
-    fun getLastSkippedStepCount(context: Context): Long =
-        prefs(context).getLong(KEY_LAST_SKIPPED_STEP_COUNT, 0L)
-
-    fun setLastSkippedStepCount(context: Context, value: Long) {
-        prefs(context).edit().putLong(KEY_LAST_SKIPPED_STEP_COUNT, value).apply()
+    fun setLastReminder(context: Context, squats: Int, steps: Long) {
+        prefs(context).edit()
+            .putInt(KEY_LAST_REMINDER_SQUATS, squats)
+            .putLong(KEY_LAST_REMINDER_STEP_COUNT, steps)
+            .apply()
     }
 
     /**
