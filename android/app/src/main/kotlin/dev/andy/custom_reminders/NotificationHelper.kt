@@ -8,7 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
-import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
@@ -23,7 +23,11 @@ import androidx.core.app.NotificationManagerCompat
  * channel is used is decided at show()-time based on the user's toggle.
  */
 object NotificationHelper {
-    private const val CHANNEL_SOUND_ID = "reminders_sound"
+    // Bumped when the channel's sound changes, because a channel's sound is
+    // locked in at creation and can't be updated later; this forces a fresh
+    // channel with the new sound (previously the long default alarm ringtone,
+    // now a short bundled chime).
+    private const val CHANNEL_SOUND_ID = "reminders_sound_v2"
     // Bumped each time the vibration pattern changes, because a channel's
     // vibration pattern is locked in at creation and can't be updated later;
     // this forces a fresh channel with the new pattern.
@@ -50,12 +54,14 @@ object NotificationHelper {
         return pattern.toLongArray()
     }
 
+    /** A short bundled chime (res/raw/squat_chime.mp3), instead of the (often long) system default alarm sound. */
+    private fun chimeUri(context: Context): Uri =
+        Uri.parse("android.resource://${context.packageName}/${R.raw.squat_chime}")
+
     private fun ensureChannels(context: Context) {
         val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        val alarmSoundUri = RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
         val alarmAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_ALARM)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -68,7 +74,7 @@ object NotificationHelper {
         ).apply {
             description = "Hourly reminder alarms with sound"
             enableVibration(true)
-            setSound(alarmSoundUri, alarmAttributes)
+            setSound(chimeUri(context), alarmAttributes)
         }
 
         val silentChannel = NotificationChannel(
