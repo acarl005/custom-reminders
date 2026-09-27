@@ -54,8 +54,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   DateTime? _snoozedUntil;
   int? _currentIntervalSteps;
   int _activityStepThreshold = 800;
-  int _startHour = 10;
-  int _endHour = 22;
+  int _startHour = 9;
+  int _endHour = 21;
   Timer? _ticker;
   Timer? _stepsTicker;
   Timer? _windowSaveDebounce;

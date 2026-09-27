@@ -20,8 +20,8 @@ object AlarmScheduler {
     const val EXTRA_HOUR = "hour"
     const val EXTRA_IS_SNOOZE = "is_snooze"
 
-    const val DEFAULT_START_HOUR = 10
-    const val DEFAULT_END_HOUR = 22
+    const val DEFAULT_START_HOUR = 9
+    const val DEFAULT_END_HOUR = 21
     const val MINUTE = 55
 
     private const val SNOOZE_REQUEST_CODE_OFFSET = 500
